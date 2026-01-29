@@ -42,7 +42,7 @@ func handleClient(conn net.Conn) {
 
 	url := parseUrl(requestData)
 	if strings.Contains(url, "echo") {
-		content := strings.Split(url, "/")[1]
+		content := strings.Split(url, "/")[2]
 		resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
 			len(content), content)
 		_, err := conn.Write([]byte(resp))

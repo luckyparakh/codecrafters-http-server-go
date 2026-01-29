@@ -33,30 +33,29 @@ func main() {
 
 func handleClient(conn net.Conn) {
 	defer conn.Close()
-	buf := make([]byte, 1024)
-	isMoredata := true
-	var sb strings.Builder
+	requestData := readRequest(conn)
 
-	for isMoredata {
-		numberBytes, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading buffer: ", err.Error())
-			return
-		}
-		if numberBytes < 1024 {
-			isMoredata = false
-		}
-		sb.Write(buf[:numberBytes])
+	if requestData == "" {
+		fmt.Println("Empty request data")
+		return
 	}
 
-	url := parseUrl(sb.String())
-	if url != "/" {
-		_, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+	url := parseUrl(requestData)
+	if strings.Contains(url, "echo") {
+		content := strings.Split(url, "/")[1]
+		resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+			len(content), content)
+		_, err := conn.Write([]byte(resp))
+		if err != nil {
+			fmt.Println("Error writing to connection: ", err.Error())
+		}
+	} else if url == "/" {
+		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
 		if err != nil {
 			fmt.Println("Error writing to connection: ", err.Error())
 		}
 	} else {
-		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		_, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 		if err != nil {
 			fmt.Println("Error writing to connection: ", err.Error())
 		}
@@ -67,4 +66,23 @@ func parseUrl(s string) string {
 	request := strings.Split(s, "\r\n")
 	requestLine := request[0]
 	return strings.Split(requestLine, " ")[1]
+}
+
+func readRequest(conn net.Conn) string {
+	buf := make([]byte, 1024)
+	isMoredata := true
+	var sb strings.Builder
+
+	for isMoredata {
+		numberBytes, err := conn.Read(buf)
+		if err != nil {
+			fmt.Println("Error reading buffer: ", err.Error())
+			return ""
+		}
+		if numberBytes < 1024 {
+			isMoredata = false
+		}
+		sb.Write(buf[:numberBytes])
+	}
+	return sb.String()
 }

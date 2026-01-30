@@ -18,6 +18,7 @@ func NewResponse(statusCode int, statusText string, body []byte) *Response {
 		StatusCode: statusCode,
 		StatusText: statusText,
 		Body:       body,
+		Headers:    make(map[string]string),
 	}
 }
 

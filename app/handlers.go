@@ -1,12 +1,15 @@
 package main
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 const echoPrefix = "/echo/"
-const userAgentPrefix = "/user-agent/"
+const userAgentPrefix = "/user-agent"
 
 func handleNotFound(r *Request) *Response {
-	return NewResponse(404, "Not found", nil)
+	return NewResponse(http.StatusNotFound, "Not Found", nil)
 }
 
 func handleRoot(r *Request) *Response {
@@ -14,16 +17,16 @@ func handleRoot(r *Request) *Response {
 }
 
 func handleEcho(r *Request) *Response {
-	content := r.Path[len(echoPrefix)+1:]
+	content := r.Path[len(echoPrefix):]
 	resp := NewResponse(http.StatusOK, "OK", []byte(content))
 	resp.SetHeader("Content-Type", "text/plain")
 	return resp
 }
 
 func handleUserAgent(r *Request) *Response {
-	userAgent, ok := r.Headers["user-agent"]
+	userAgent, ok := r.Headers[strings.ToLower("User-Agent")]
 	if !ok {
-		return NewResponse(http.StatusBadRequest, "Not found", nil)
+		return NewResponse(http.StatusBadRequest, "Not Found", nil)
 	}
 	resp := NewResponse(http.StatusOK, "OK", []byte(userAgent))
 	resp.SetHeader("Content-Type", "text/plain")

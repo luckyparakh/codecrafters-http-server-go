@@ -26,7 +26,16 @@ type Server struct {
 	router   *Router
 }
 
+var dirPath string
+
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "--directory" {
+		dirPath = os.Args[2]
+		if info, err := os.Stat(dirPath); err != nil || !info.IsDir() {
+			log.Fatalf("Invalid directory: %s", dirPath)
+		}
+	}
+
 	config := Config{
 		Port:         "4221",
 		Host:         "0.0.0.0",

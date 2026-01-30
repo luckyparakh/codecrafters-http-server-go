@@ -1,88 +1,213 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
 	"net"
 	"os"
-	"strings"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 )
 
-func main() {
-	// l is a net.Listener that listens on port 4221 on all interfaces.
-	// You can use it to accept connections.
-	// See https://pkg.go.dev/net#Listen for more information.
-	l, err := net.Listen("tcp", "0.0.0.0:4221")
-	if err != nil {
-		fmt.Println("Failed to bind to port 4221")
-		os.Exit(1)
-	}
-	defer l.Close()
-	fmt.Println("Server is listening on 4221")
-
-	// Accept a connection. This blocks until a connection is made.
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting connection: ", err.Error())
-			continue
-		}
-		handleClient(conn)
-	}
-
+type Config struct {
+	Port         string
+	Host         string
+	Protocol     string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+type Server struct {
+	listener net.Listener
+	config   Config
+	logger   *log.Logger
+	wg       sync.WaitGroup
+	router   *Router
 }
 
-func handleClient(conn net.Conn) {
-	defer conn.Close()
-	requestData := readRequest(conn)
+func main() {
+	config := Config{
+		Port:         "4221",
+		Host:         "0.0.0.0",
+		Protocol:     "tcp",
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+	}
 
-	if requestData == "" {
-		fmt.Println("Empty request data")
+	logger := log.New(os.Stdout, "[http-server]", log.LstdFlags|log.Llongfile)
+	server, err := NewServer(config, logger)
+	if err != nil {
+		logger.Fatalf("Failed to create server: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		logger.Println("Shutdown signal received, gracefully stopping.")
+		cancel()
+		server.Shutdown()
+	}()
+
+	if err := server.Start(ctx); err != nil {
+		logger.Fatalf("Error starting server: %v", err)
+	}
+}
+
+func NewServer(config Config, logger *log.Logger) (*Server, error) {
+	addr := net.JoinHostPort(config.Host, config.Port)
+	l, lErr := net.Listen(config.Protocol, addr)
+	if lErr != nil {
+		return nil, lErr
+	}
+
+	server := Server{
+		listener: l,
+		config:   config,
+		logger:   logger,
+		router:   NewRouter(),
+	}
+
+	server.RegisterRoutes()
+
+	return &server, nil
+}
+
+func (s *Server) RegisterRoutes() {
+	s.router.RegisterExactRoute("/", handleRoot)
+	s.router.RegisterExactRoute(echoPrefix, handleEcho)
+	s.router.RegisterExactRoute(userAgentPrefix, handleUserAgent)
+}
+
+func (s *Server) Start(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+		conn, connErr := s.listener.Accept()
+		if connErr != nil {
+			// s.logger.Printf("failed to accept connection: %v", connErr)
+			// continue
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				s.logger.Printf("Error accepting connection: %v", connErr)
+				continue
+			}
+		}
+		s.wg.Add(1)
+		go s.handleConnection(conn)
+	}
+}
+
+func (s *Server) Shutdown() {
+	s.logger.Println("Shutdown Initiated")
+
+	if err := s.listener.Close(); err != nil {
+		s.logger.Printf("Error closing listener: %v", err)
+	}
+
+	s.logger.Println("Waiting for connection to finish")
+	s.wg.Wait()
+	s.logger.Println("Server Stopped")
+}
+
+func (s *Server) handleConnection(conn net.Conn) {
+	defer s.wg.Done()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			s.logger.Printf("Error closing connection: %v", err)
+		}
+	}()
+
+	setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
+	if setReadDeadlineErr != nil {
+		s.logger.Printf("Error setting read deadline: %v", setReadDeadlineErr)
+		return
+	}
+	setWriteDeadlineErr := conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+	if setWriteDeadlineErr != nil {
+		s.logger.Printf("Error setting write deadline: %v", setWriteDeadlineErr)
 		return
 	}
 
-	url := parseUrl(requestData)
-	if strings.Contains(url, "echo") {
-		content := strings.Split(url, "/")[2]
-		resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
-			len(content), content)
-		_, err := conn.Write([]byte(resp))
-		if err != nil {
-			fmt.Println("Error writing to connection: ", err.Error())
-		}
-	} else if url == "/" {
-		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-		if err != nil {
-			fmt.Println("Error writing to connection: ", err.Error())
-		}
-	} else {
-		_, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
-		if err != nil {
-			fmt.Println("Error writing to connection: ", err.Error())
-		}
+	req, parseErr := parseRequest(conn)
+	if parseErr != nil {
+		s.logger.Printf("Error parsing request: %v", parseErr)
+		return
+	}
+	s.logger.Printf("Received request: %+v", req)
+
+	handler := s.router.Match(req.Path)
+	resp := handler(req)
+
+	if err := writeResponse(conn, resp); err != nil {
+		s.logger.Printf("Error writing response: %v", err)
 	}
 }
 
-func parseUrl(s string) string {
-	request := strings.Split(s, "\r\n")
-	requestLine := request[0]
-	return strings.Split(requestLine, " ")[1]
-}
+// Old Code
 
-func readRequest(conn net.Conn) string {
-	buf := make([]byte, 1024)
-	isMoredata := true
-	var sb strings.Builder
+// func handleClient(conn net.Conn) {
+// 	defer conn.Close()
+// 	requestData := readRequest(conn)
 
-	for isMoredata {
-		numberBytes, err := conn.Read(buf)
-		if err != nil {
-			fmt.Println("Error reading buffer: ", err.Error())
-			return ""
-		}
-		if numberBytes < 1024 {
-			isMoredata = false
-		}
-		sb.Write(buf[:numberBytes])
-	}
-	return sb.String()
-}
+// 	if requestData == "" {
+// 		fmt.Println("Empty request data")
+// 		return
+// 	}
+
+// 	url := parseUrl(requestData)
+// 	if strings.Contains(url, "echo") {
+// 		content := strings.Split(url, "/")[2]
+// 		resp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+// 			len(content), content)
+// 		_, err := conn.Write([]byte(resp))
+// 		if err != nil {
+// 			fmt.Println("Error writing to connection: ", err.Error())
+// 		}
+// 	} else if url == "/" {
+// 		_, err := conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+// 		if err != nil {
+// 			fmt.Println("Error writing to connection: ", err.Error())
+// 		}
+// 	} else {
+// 		_, err := conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+// 		if err != nil {
+// 			fmt.Println("Error writing to connection: ", err.Error())
+// 		}
+// 	}
+// }
+
+// func parseUrl(s string) string {
+// 	request := strings.Split(s, "\r\n")
+// 	requestLine := request[0]
+// 	return strings.Split(requestLine, " ")[1]
+// }
+
+// func readRequest(conn net.Conn) string {
+// 	buf := make([]byte, 1024)
+// 	isMoredata := true
+// 	var sb strings.Builder
+
+// 	for isMoredata {
+// 		numberBytes, err := conn.Read(buf)
+// 		if err != nil {
+// 			fmt.Println("Error reading buffer: ", err.Error())
+// 			return ""
+// 		}
+// 		if numberBytes < 1024 {
+// 			isMoredata = false
+// 		}
+// 		sb.Write(buf[:numberBytes])
+// 	}
+// 	return sb.String()
+// }

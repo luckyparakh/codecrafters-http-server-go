@@ -80,7 +80,7 @@ func NewServer(config Config, logger *log.Logger) (*Server, error) {
 
 func (s *Server) RegisterRoutes() {
 	s.router.RegisterExactRoute("/", handleRoot)
-	s.router.RegisterExactRoute(echoPrefix, handleEcho)
+	s.router.RegisterPrefixRoute(echoPrefix, handleEcho)
 	s.router.RegisterExactRoute(userAgentPrefix, handleUserAgent)
 }
 

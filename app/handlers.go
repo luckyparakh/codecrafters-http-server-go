@@ -2,11 +2,15 @@ package main
 
 import (
 	"net/http"
+	"os"
 	"strings"
 )
 
-const echoPrefix = "/echo/"
-const userAgentPrefix = "/user-agent"
+const (
+	echoPrefix      = "/echo/"
+	userAgentPrefix = "/user-agent"
+	filesPrefix     = "/files/"
+)
 
 func handleNotFound(r *Request) *Response {
 	return NewResponse(http.StatusNotFound, "Not Found", nil)
@@ -30,5 +34,17 @@ func handleUserAgent(r *Request) *Response {
 	}
 	resp := NewResponse(http.StatusOK, "OK", []byte(userAgent))
 	resp.SetHeader("Content-Type", "text/plain")
+	return resp
+}
+
+func handleFiles(r *Request) *Response {
+	directoryPath := os.Args[2]
+	fileName := r.Path[len(filesPrefix):]
+	fileContent, err := os.ReadFile(directoryPath + fileName)
+	if err != nil {
+		return NewResponse(http.StatusNotFound, "Not Found", nil)
+	}
+	resp := NewResponse(http.StatusOK, "OK", fileContent)
+	resp.SetHeader("Content-Type", "application/octet-stream")
 	return resp
 }

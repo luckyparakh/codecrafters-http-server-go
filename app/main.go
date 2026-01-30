@@ -82,6 +82,7 @@ func (s *Server) RegisterRoutes() {
 	s.router.RegisterExactRoute("/", handleRoot)
 	s.router.RegisterPrefixRoute(echoPrefix, handleEcho)
 	s.router.RegisterExactRoute(userAgentPrefix, handleUserAgent)
+	s.router.RegisterPrefixRoute(filesPrefix, handleFiles)
 }
 
 func (s *Server) Start(ctx context.Context) error {

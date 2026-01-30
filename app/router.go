@@ -23,10 +23,20 @@ func (r *Router) Match(path string) HandleFunc {
 		return handler
 	}
 
+	// Match the longest prefix route
+	longestMatchLen := 0
+	var matchingHandler HandleFunc
 	for route, handler := range r.exactRoutes {
 		if strings.HasPrefix(path, route) {
-			return handler
+			if len(route) > longestMatchLen {
+				longestMatchLen = len(route)
+				matchingHandler = handler
+			}
 		}
+	}
+
+	if matchingHandler != nil {
+		return matchingHandler
 	}
 
 	return handleNotFound

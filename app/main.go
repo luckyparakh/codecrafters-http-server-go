@@ -148,6 +148,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	handler := s.router.Match(req.Path)
 	resp := handler(req)
+	s.logger.Printf("Response of the request: %+v", resp)
 
 	if err := writeResponse(conn, resp); err != nil {
 		s.logger.Printf("Error writing response: %v", err)

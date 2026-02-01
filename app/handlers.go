@@ -29,7 +29,7 @@ func handleEcho(r *Request) *Response {
 }
 
 func handleUserAgent(r *Request) *Response {
-	userAgent, ok := r.Headers[strings.ToLower("User-Agent")]
+	userAgent, ok := r.GetHeader("User-Agent")
 	if !ok {
 		return NewResponse(http.StatusBadRequest, "Not Found", nil)
 	}

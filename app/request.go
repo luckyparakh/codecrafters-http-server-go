@@ -17,6 +17,11 @@ type Request struct {
 	Body    []byte
 }
 
+func (r *Request) GetHeader(key string) (string, bool) {
+	value, ok := r.Headers[strings.ToLower(key)]
+	return value, ok
+}
+
 func parseRequest(conn net.Conn) (*Request, error) {
 	reader := bufio.NewReader(conn)
 
@@ -74,7 +79,7 @@ func parseRequest(conn net.Conn) (*Request, error) {
 	}
 
 	// Read body if Content-Length header is present
-	contentLength, exists := req.Headers[strings.ToLower("Content-Length")]
+	contentLength, exists := req.GetHeader("Content-Length")
 	if exists {
 		// 3. At this point, reader cursor is positioned at "Hello, World!"
 		//    It has NOT re-read any previous data

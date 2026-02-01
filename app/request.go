@@ -74,7 +74,7 @@ func parseRequest(conn net.Conn) (*Request, error) {
 	}
 
 	// Read body if Content-Length header is present
-	contentLength, exists := req.Headers["Content-Length"]
+	contentLength, exists := req.Headers[strings.ToLower("Content-Length")]
 	if exists {
 		// 3. At this point, reader cursor is positioned at "Hello, World!"
 		//    It has NOT re-read any previous data
@@ -125,11 +125,10 @@ func parseRequest(conn net.Conn) (*Request, error) {
 
 				bufio.Reader maintains position - already consumed headers, now positioned at body start
 			*/
-			n, err := io.ReadFull(reader, req.Body)
+			_, err := io.ReadFull(reader, req.Body)
 			if err != nil {
 				return nil, err
 			}
-			fmt.Println("Read body bytes:", n)
 		}
 	}
 	return req, nil

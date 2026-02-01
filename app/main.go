@@ -160,6 +160,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 	resp := handler(req)
 	s.logger.Printf("Response of the request: %+v", resp)
 
+	if err := processCommonHeaders(req, resp); err != nil {
+		s.logger.Printf("Error processing common headers: %v", err)
+		return
+	}
+
 	if err := writeResponse(conn, resp); err != nil {
 		s.logger.Printf("Error writing response: %v", err)
 	}

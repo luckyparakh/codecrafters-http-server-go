@@ -2,9 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"net"
 )
+
+var supportedCompression = map[string]bool{
+	"gzip": true,
+}
 
 type Response struct {
 	StatusCode int
@@ -72,13 +78,6 @@ func writeResponse(conn net.Conn, resp *Response) error {
 		return err
 	}
 
-	// If body is present, set Content-Length header, if not already set
-	if len(resp.Body) > 0 {
-		if _, exists := resp.Headers["Content-Length"]; !exists {
-			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))
-		}
-	}
-
 	// Write headers
 	for key, value := range resp.Headers {
 		if _, err := w.WriteString(fmt.Sprintf("%s: %s\r\n", key, value)); err != nil {
@@ -99,4 +98,46 @@ func writeResponse(conn net.Conn, resp *Response) error {
 	}
 
 	return w.Flush()
+}
+
+func processCommonHeaders(r *Request, resp *Response) error {
+	// If body is present, set Content-Length header, if not already set
+	if len(resp.Body) > 0 {
+		if _, exists := resp.Headers["Content-Length"]; !exists {
+			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))
+		}
+	}
+
+	// Handle Accept-Encoding for compression
+	if compressType, ok := r.GetHeader("Accept-Encoding"); ok {
+		if supportedCompression[compressType] {
+			if err := compressBody(resp, compressType); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func compressBody(resp *Response, compressType string) error {
+	resp.SetHeader("Content-Encoding", compressType)
+	switch compressType {
+	case "gzip":
+		var b bytes.Buffer
+		w := gzip.NewWriter(&b)
+
+		// Write data to the gzip writer; it gets compressed into 'b'
+		if _, err := w.Write(resp.Body); err != nil {
+			return err
+		}
+
+		// Close the writer to flush any buffered data and write the GZIP footer
+		if err := w.Close(); err != nil {
+			return err
+		}
+
+		// Replace response body with compressed data
+		resp.Body = b.Bytes()
+	}
+	return nil
 }

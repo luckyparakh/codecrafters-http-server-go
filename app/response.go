@@ -122,8 +122,10 @@ func compressBody(resp *Response, compressType string) error {
 	// "Accept-Encoding: invalid-encoding-1, gzip, invalid-encoding-2"
 	// Check each encoding in order, use the first supported one
 	compressTypePart := strings.SplitSeq(strings.TrimSpace(compressType), ",")
+	fmt.Println("compressTypePart", compressTypePart)
 	for ct := range compressTypePart {
 		if supportedCompression[ct] {
+			fmt.Println("compressType", ct)
 			if err := doCompression(resp, ct); err != nil {
 				// Log error but continue without compression
 				// May be next compression type in the list is working error free
@@ -136,7 +138,6 @@ func compressBody(resp *Response, compressType string) error {
 }
 
 func doCompression(resp *Response, compressType string) error {
-	resp.SetHeader("Content-Encoding", compressType)
 	switch compressType {
 	case "gzip":
 		var b bytes.Buffer
@@ -154,6 +155,7 @@ func doCompression(resp *Response, compressType string) error {
 
 		// Replace response body with compressed data
 		resp.Body = b.Bytes()
+		resp.SetHeader("Content-Encoding", compressType)
 	}
 	return nil
 }

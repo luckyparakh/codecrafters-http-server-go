@@ -132,42 +132,48 @@ func (s *Server) Shutdown() {
 
 func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
-
-	setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
-	if setReadDeadlineErr != nil {
-		s.logger.Printf("Error setting read deadline: %v", setReadDeadlineErr)
-		return
-	}
-	setWriteDeadlineErr := conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
-	if setWriteDeadlineErr != nil {
-		s.logger.Printf("Error setting write deadline: %v", setWriteDeadlineErr)
-		return
-	}
-
-	req, parseErr := parseRequest(conn)
-	if parseErr != nil {
-		s.logger.Printf("Error parsing request: %v", parseErr)
-		return
-	}
-	s.logger.Printf("Received request: %+v", req)
-
-	handler := s.router.Match(req.Path)
-	resp := handler(req)
-	s.logger.Printf("Response of the request: %+v", resp)
-
-	if err := processCommonHeaders(req, resp); err != nil {
-		s.logger.Printf("Error processing common headers: %v", err)
-		return
-	}
-	s.logger.Printf("Response of the request after processing common headers: %+v", resp)
-
-	if err := writeResponse(conn, resp); err != nil {
-		s.logger.Printf("Error writing response: %v", err)
-	}
-
-	if val, ok := req.GetHeader("Connection"); ok && val == "close" {
+	defer func() {
 		if err := conn.Close(); err != nil {
 			s.logger.Printf("Error closing connection: %v", err)
+		}
+	}()
+	
+	for {
+		setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
+		if setReadDeadlineErr != nil {
+			s.logger.Printf("Error setting read deadline: %v", setReadDeadlineErr)
+			return
+		}
+		setWriteDeadlineErr := conn.SetWriteDeadline(time.Now().Add(s.config.WriteTimeout))
+		if setWriteDeadlineErr != nil {
+			s.logger.Printf("Error setting write deadline: %v", setWriteDeadlineErr)
+			return
+		}
+
+		req, parseErr := parseRequest(conn)
+		if parseErr != nil {
+			s.logger.Printf("Error parsing request: %v", parseErr)
+			return
+		}
+		s.logger.Printf("Received request: %+v", req)
+
+		handler := s.router.Match(req.Path)
+		resp := handler(req)
+		s.logger.Printf("Response of the request: %+v", resp)
+
+		if err := processCommonHeaders(req, resp); err != nil {
+			s.logger.Printf("Error processing common headers: %v", err)
+			return
+		}
+		s.logger.Printf("Response of the request after processing common headers: %+v", resp)
+
+		if err := writeResponse(conn, resp); err != nil {
+			s.logger.Printf("Error writing response: %v", err)
+		}
+
+		if val, ok := req.GetHeader("Connection"); ok && val == "close" {
+			s.logger.Println("Connection: close header found, closing connection.")
+			return
 		}
 	}
 }

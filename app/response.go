@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"net"
+	"strings"
 )
 
 var supportedCompression = map[string]bool{
@@ -110,16 +111,31 @@ func processCommonHeaders(r *Request, resp *Response) error {
 
 	// Handle Accept-Encoding for compression
 	if compressType, ok := r.GetHeader("Accept-Encoding"); ok {
-		if supportedCompression[compressType] {
-			if err := compressBody(resp, compressType); err != nil {
-				return err
-			}
+		if err := compressBody(resp, compressType); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func compressBody(resp *Response, compressType string) error {
+	// "Accept-Encoding: invalid-encoding-1, gzip, invalid-encoding-2"
+	// Check each encoding in order, use the first supported one
+	compressTypePart := strings.SplitSeq(strings.TrimSpace(compressType), ",")
+	for ct := range compressTypePart {
+		if supportedCompression[ct] {
+			if err := doCompression(resp, ct); err != nil {
+				// Log error but continue without compression
+				// May be next compression type in the list is working error free
+				continue
+			}
+			return nil
+		}
+	}
+	return nil
+}
+
+func doCompression(resp *Response, compressType string) error {
 	resp.SetHeader("Content-Encoding", compressType)
 	switch compressType {
 	case "gzip":

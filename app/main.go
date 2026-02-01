@@ -137,7 +137,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			s.logger.Printf("Error closing connection: %v", err)
 		}
 	}()
-	
+
 	for {
 		setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
 		if setReadDeadlineErr != nil {

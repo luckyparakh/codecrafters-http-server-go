@@ -116,6 +116,12 @@ func processCommonHeaders(r *Request, resp *Response) error {
 			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))
 		}
 	}
+
+	// Handle Connection: close
+	if val, ok := r.GetHeader("Connection"); ok && val == "close" {
+		resp.SetHeader("Connection", "close")
+	}
+
 	return nil
 }
 

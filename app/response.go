@@ -110,6 +110,7 @@ func processCommonHeaders(r *Request, resp *Response) error {
 	}
 
 	// If body is present, set Content-Length header, if not already set
+	// This is important after compression, as body length may have changed
 	if len(resp.Body) > 0 {
 		if _, exists := resp.Headers["Content-Length"]; !exists {
 			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))

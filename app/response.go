@@ -102,17 +102,17 @@ func writeResponse(conn net.Conn, resp *Response) error {
 }
 
 func processCommonHeaders(r *Request, resp *Response) error {
-	// If body is present, set Content-Length header, if not already set
-	if len(resp.Body) > 0 {
-		if _, exists := resp.Headers["Content-Length"]; !exists {
-			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))
-		}
-	}
-
 	// Handle Accept-Encoding for compression
 	if compressType, ok := r.GetHeader("Accept-Encoding"); ok {
 		if err := compressBody(resp, compressType); err != nil {
 			return err
+		}
+	}
+
+	// If body is present, set Content-Length header, if not already set
+	if len(resp.Body) > 0 {
+		if _, exists := resp.Headers["Content-Length"]; !exists {
+			resp.Headers["Content-Length"] = fmt.Sprintf("%d", len(resp.Body))
 		}
 	}
 	return nil

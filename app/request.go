@@ -86,6 +86,7 @@ func parseRequest(conn net.Conn) (*Request, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid Content-Length: %w", err)
 		}
+		fmt.Println("length:", length)
 
 		// Validate Content-Length
 		if length < 0 {
@@ -124,10 +125,11 @@ func parseRequest(conn net.Conn) (*Request, error) {
 
 				bufio.Reader maintains position - already consumed headers, now positioned at body start
 			*/
-			_, err := io.ReadFull(reader, req.Body)
+			n, err := io.ReadFull(reader, req.Body)
 			if err != nil {
 				return nil, err
 			}
+			fmt.Println("Read body bytes:", n)
 		}
 	}
 	return req, nil

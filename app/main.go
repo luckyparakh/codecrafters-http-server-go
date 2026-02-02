@@ -171,6 +171,33 @@ func (s *Server) handleConnection(conn net.Conn) {
 		     4. Client closes connection
 	*/
 
+	/*
+
+		TCP Connection = Phone call between curl and server
+
+		curl: [Dials] → Server: [Answers]
+		      Server: Accept() returns, creates goroutine
+
+		curl: "Hey, GET /a please"
+		      [Speaks into phone]
+
+		Server goroutine: [Listens on same phone]
+		                  "Here's /a"
+		                  [Still holding phone, waiting...]
+
+		curl: "Great! Now GET /b please"
+		      [Same phone call, no hang-up!]
+
+		Server goroutine: [Still listening on same phone]
+		                  "Here's /b"
+		                  [Still holding phone...]
+
+		curl: [Hangs up phone]
+
+		Server goroutine: [Hears dial tone / EOF]
+		                  [Hangs up]
+	*/
+
 	for {
 		setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
 		if setReadDeadlineErr != nil {

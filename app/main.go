@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -101,6 +103,7 @@ func (s *Server) Start(ctx context.Context) error {
 			return nil
 		default:
 		}
+		// Blocks until NEW connection (NOT New request on existing connection)
 		conn, connErr := s.listener.Accept()
 		if connErr != nil {
 			// s.logger.Printf("failed to accept connection: %v", connErr)
@@ -133,10 +136,40 @@ func (s *Server) Shutdown() {
 func (s *Server) handleConnection(conn net.Conn) {
 	defer s.wg.Done()
 	defer func() {
+		s.logger.Printf("Closing connection from %s", conn.RemoteAddr().String())
 		if err := conn.Close(); err != nil {
 			s.logger.Printf("Error closing connection: %v", err)
 		}
 	}()
+
+	/*
+		   HTTP/1.1 Keep-Alive (Persistent Connections):
+
+		   By default, HTTP/1.1 keeps connections open for multiple requests.
+		   Benefits:
+		     - Reduces TCP handshake overhead
+		     - Faster subsequent requests
+		     - Less server resource usage
+
+			Without loop (one request per connection):
+				Client → Server: Open TCP, GET /a, Close TCP
+				Client → Server: Open TCP, GET /b, Close TCP
+				Cost: 2 TCP handshakes (~100ms overhead)
+
+			With loop (multiple requests per connection):
+				Client → Server: Open TCP
+								GET /a → Response
+								GET /b → Response (same connection!)
+								Close TCP
+				Cost: 1 TCP handshake (~50ms overhead)
+
+
+		   We loop to handle multiple requests on the same connection until:
+		     1. Client sends "Connection: close" header
+		     2. Read timeout occurs (no more data)
+		     3. Parse error (malformed request)
+		     4. Client closes connection
+	*/
 
 	for {
 		setReadDeadlineErr := conn.SetReadDeadline(time.Now().Add(s.config.ReadTimeout))
@@ -152,7 +185,11 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		req, parseErr := parseRequest(conn)
 		if parseErr != nil {
-			s.logger.Printf("Error parsing request: %v", parseErr)
+			if errors.Is(parseErr, io.EOF) {
+				s.logger.Println("Client closed connection")
+			} else {
+				s.logger.Printf("Error parsing request: %v", parseErr)
+			}
 			return
 		}
 		s.logger.Printf("Received request: %+v", req)
